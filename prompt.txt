@@ -1,0 +1,90 @@
+===========
+Background
+===========
+In the equities market, an order book tracks buy (bid) and sell (ask/offer) orders for a security, organized by price level.
+The order book reflects the state after processing market data messages sequentially. Orders can be added to the book via
+an "Add Order" message, canceled (either partially or fully) via a "Cancel Order" message, and executed (either partially
+or fully) via an "Execute Order" message.
+
+
+============================
+Input Message Specification
+============================
+The input will consist of comma-separated values (CSV) messages, with each message on a new line. There are three types of messages:
+
+1. Add Order
+   Fields in order:
+   - Timestamp    : Milliseconds after midnight
+   - Message Type : 'A'
+   - Order ID     : Uppercase alphanumeric, up to 10 characters; globally unique across all orders
+   - Side         : 'B' for buy; 'S' for sell
+   - Shares       : Quantity of shares
+   - Symbol       : Stock symbol, up to 8 characters
+   - Price        : Price in 0.0001 increments (4 implied decimal places)
+
+2. Cancel Order
+   Fields in order:
+   - Timestamp    : Milliseconds after midnight
+   - Message Type : 'C'
+   - Order ID     : Uppercase alphanumeric, up to 10 characters; globally unique across all orders
+   - Shares       : Number of shares to cancel; if matches quantity on book, order is fully canceled
+
+3. Execute Order
+   Fields in order:
+   - Timestamp    : Milliseconds after midnight
+   - Message Type : 'E'
+   - Order ID     : Uppercase alphanumeric, up to 10 characters; globally unique across all orders
+   - Shares       : Number of shares to execute
+   - Execution ID : Uppercase alphanumeric; if matches quantity on book, order is fully executed
+
+
+Example Input:
+1000,A,ORD1,B,500,ABC,1005000   // Add buy: 500 shares of ABC at $100.5000
+1500,A,ORD2,S,300,ABC,1010000   // Add sell: 300 shares of ABC at $101.0000
+2000,A,ORD3,B,400,XYZ,995000    // Add buy: 400 shares of XYZ at $99.5000
+2500,C,ORD1,200                 // Cancel 200 shares of ORD1 (ABC buy now 300)
+3000,E,ORD2,100,EXE1            // Execute 100 shares of ORD2 (ABC sell now 200)
+
+
+==================
+Problem Statement
+==================
+Create a C++ application that processes a sequence of market data messages read from stdin to maintain and update the state of an order book.
+A sequence of market data messages is provided in the attached input.csv file. Ignore any messages that are malformed (e.g. incorrect number
+of fields or invalid field values). For "Cancel Order" or "Execute Order" messages referencing an unknown Order ID, ignore the message. If
+shares to cancel/execute exceed remaining shares, process up to the remaining amount. If remaining shares reach zero, remove the order from
+the book. Messages are processed in the order received (ascending timestamp assumed).
+
+Identify the symbol with the highest total remaining shares (sum of buy and sell shares) across all price levels after processing all messages.
+If multiple symbols have the highest total remaining shares, choose the alphabetically earliest symbol (e.g. "ABC" beats "XYZ").
+Output the state of that book with one line per price level, with the following format:
+
+<symbol_name>
+SELL:
+<price> <total_shares> <total_orders>
+...
+BUY:
+<price> <total_shares> <total_orders>
+...
+
+Where:
+- <symbol_name> is the symbol associated with that order book
+- <price> should be displayed with 4 decimal places
+- <total_shares> is the share quantity at that price level
+- <total_orders> is the order quantity at that price level
+- SELL levels should be sorted highest to lowest price
+- BUY levels should be sorted highest to lowest price
+
+Example Output:
+ABC
+SELL:
+101.0000 200 1
+BUY:
+100.5000 300 1
+
+Additionally, implement the following functions to query the order book state after processing all messages.
+The specific APIs and edge-case handling is up to your discretion.
+- Total shares executed
+- Total number of executions
+- BBO (best bid and offer) prices - the highest bid price and lowest ask price
+- Nth price level for a given side sorted by price (lowest to highest for sell, highest to lowest for buy)
