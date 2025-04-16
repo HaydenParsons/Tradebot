@@ -32,16 +32,63 @@ typedef multi_index_container<
     >
 > orderBook;
 
-struct compareSymbols {
-    bool operator()(pair<string, int> a, pair<string, int> b) {
-        return a.second == b.second ? a.first < b.first : a.second < b.second;
+void printOrdersByPrice(const boost::multi_index::nth_index<orderBook, 1>::type& ordersByPrice, string symbol, bool isBuy) {
+    printf("%s:\n", isBuy ? "BUY" : "SELL");
+    for (auto it = ordersByPrice.begin(); it != ordersByPrice.end(); ) {
+        float price = it->price;
+        int numOrders = 0;
+        int totalShares = 0;
+
+        // sum shares and count number of orders at current price
+        auto range = ordersByPrice.equal_range(price);
+        for (auto orderIt = range.first; orderIt != range.second; orderIt++) {
+            if (orderIt->symbol == symbol) {
+                numOrders++;
+                totalShares += orderIt->shares;
+            }
+        }
+
+        // print out needed info and move on to the next price
+        if (numOrders > 0) { printf("%f %d %d\n", price, totalShares, numOrders); }
+        it = range.second; 
     }
-};
+}
+
+void showHighestRemaining(orderBook &buyOrders, orderBook &sellOrders) {
+    string highestSharesSymbol;
+    float price = 0;
+    int highestSharesSum = 0, numOrders = 0;
+    map<string, int> remainingShares;
+
+    auto &buyByPrice = buyOrders.get<1>();
+    auto &sellByPrice = sellOrders.get<1>();
+
+    highestSharesSymbol = buyByPrice.begin()->symbol;
+
+    for (auto &buyOrder : buyByPrice) {
+        remainingShares[buyOrder.symbol] += buyOrder.shares;
+        if (highestSharesSum < remainingShares[buyOrder.symbol] || (highestSharesSum == remainingShares[buyOrder.symbol] && highestSharesSymbol > buyOrder.symbol)) {
+            highestSharesSum = remainingShares[buyOrder.symbol];
+            highestSharesSymbol = buyOrder.symbol;
+        }
+    }
+    for (auto &sellOrder : sellByPrice) {
+        remainingShares[sellOrder.symbol] += sellOrder.shares;
+        if (highestSharesSum < remainingShares[sellOrder.symbol] || (highestSharesSum == remainingShares[sellOrder.symbol] && highestSharesSymbol > sellOrder.symbol)) {
+            highestSharesSum = remainingShares[sellOrder.symbol];
+            highestSharesSymbol = sellOrder.symbol;
+        }
+    }
+
+    printf("%s\n", highestSharesSymbol.c_str());
+    printOrdersByPrice(sellByPrice, highestSharesSymbol, 0);
+    printOrdersByPrice(buyByPrice, highestSharesSymbol, 1);
+}
+
+
 
 int main(int argc, char **argv) {
     string inputLine, word;
-    string orderID;
-    map<string, set<string> > executions;
     orderBook buyOrders;
     orderBook sellOrders;
 
@@ -61,27 +108,32 @@ int main(int argc, char **argv) {
         if (message[0] == "QUIT") {
             return 0;
         } else if (message[0] == "SHOW") {
-            // TODO
             if (message[1] == "HIGHEST") {
-            
-            // NOT WORKING?
+                showHighestRemaining(buyOrders, sellOrders);
+                continue;
             } else if (message[1] == "BBO") {
                 auto &buyPrices = buyOrders.get<1>();
                 auto high = buyPrices.rbegin();
 
-                printf("Highest bid price:\n %f %s\n", high->price, high->orderID.c_str());
+                if (high == buyPrices.rend()) {
+                    printf("No buy orders remaining\n");
+                } else {   
+                    printf("Highest bid price:\n%f %s\n", high->price, high->orderID.c_str());
+                }
 
                 auto &sellPrices = sellOrders.get<1>();
                 auto low = sellPrices.begin();
-
-                printf("Lowest ask price:\n %f \n%s\n", low->price, low->orderID.c_str());
-
-                continue;
+                
+                if (low == sellPrices.end()) {
+                    printf("No sell orders remaining\n");
+                } else {   
+                    printf("Lowest ask price:\n%f %s\n", low->price, low->orderID.c_str());
+                }
             } else if (message[1] == "TOTAL") {
                 if (message[2] == "SHARES") {
-                    printf("Total shares executed:\n %d\n", totalSharesExecuted);
+                    printf("Total shares executed:\n%d\n", totalSharesExecuted);
                 } else if (message[2] == "EXECS") {
-                    printf("Total number of executions:\n %d\n", numExecutions);
+                    printf("Total number of executions:\n%d\n", numExecutions);
                 }
                 continue;
             } else if (message[1] == "LEVEL") {
@@ -89,23 +141,28 @@ int main(int argc, char **argv) {
 
                 if (message[2] == "B") {
                     auto &buyPrices = buyOrders.get<1>();
-                    auto frnt = buyPrices.begin();
-                    for (int i = 0; i < n; i++) { frnt++; }
+                    if (n > buyPrices.size()) {
+                        printf("Only %d buy price levels remaining\n", buyPrices.size());
+                        continue;
+                    }
 
-                    printf("BUY LEVEL %d: %d\n", n, frnt->price);
+                    auto buyPrice = buyPrices.rbegin();
+                    for (int i = 0; i < n - 1; i++) { buyPrice++; }
+
+                    printf("BUY level %d:\n%f\n", n, buyPrice->price);
                 } else if (message[2] == "S") {
                     auto &sellPrices = sellOrders.get<1>();
-                    auto back = sellPrices.end();
-                    for (int i = 0; i <= n; i++) { back--; }
+                    if (n > sellPrices.size()) {
+                        printf("Only %d sell price levels remaining\n", sellPrices.size());
+                        continue;
+                    }
 
-                    printf("SELL LEVEL %d: %d\n", n, back->price);
-                } else {
-                    continue;
+                    auto sellPrice = sellPrices.begin();
+                    for (int i = 0; i < n - 1; i++) { sellPrice++; }
+
+                    printf("SELL level %d:\n%f\n", n, sellPrice->price);
                 }
             }
-
-
-            return 0;
         } else if (message[1] == "A") {
             // ignore message due to incorrect number of fields or incorrect field values
             // TODO : FINISH FIELD VALUE CHECKS
@@ -159,8 +216,6 @@ int main(int argc, char **argv) {
                     totalSharesExecuted += sit->shares;
                     sellByID.erase(sit);
                 }
-            } else {
-                continue;
             }
         } else if(message[1] == "C") {
             // ignore message due to incorrect number of fields or incorrect field values
@@ -188,5 +243,6 @@ int main(int argc, char **argv) {
             }
         }
     }
+    showHighestRemaining(buyOrders, sellOrders);
     return 0;
 }
