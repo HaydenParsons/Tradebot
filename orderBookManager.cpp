@@ -32,8 +32,7 @@ typedef multi_index_container<
     >
 > orderBook;
 
-void printOrdersByPrice(const boost::multi_index::nth_index<orderBook, 1>::type& ordersByPrice, string symbol, bool isBuy) {
-    printf("%s:\n", isBuy ? "BUY" : "SELL");
+void printOrdersByPrice(const boost::multi_index::nth_index<orderBook, 1>::type& ordersByPrice, string symbol) {
     for (auto it = ordersByPrice.begin(); it != ordersByPrice.end(); ) {
         float price = it->price;
         int numOrders = 0;
@@ -54,6 +53,8 @@ void printOrdersByPrice(const boost::multi_index::nth_index<orderBook, 1>::type&
     }
 }
 
+// prints out the symbol with the highest remaining shares across all price levels and the state of that book
+// automatically called at the end once all messages have been input, but can also be called with the input "SHOW,HIGHEST"
 void showHighestRemaining(orderBook &buyOrders, orderBook &sellOrders) {
     string highestSharesSymbol;
     float price = 0;
@@ -80,11 +81,16 @@ void showHighestRemaining(orderBook &buyOrders, orderBook &sellOrders) {
         }
     }
 
-    printf("%s\n", highestSharesSymbol.c_str());
-    printOrdersByPrice(sellByPrice, highestSharesSymbol, 0);
-    printOrdersByPrice(buyByPrice, highestSharesSymbol, 1);
+    printf("%s\nSELL:\n", highestSharesSymbol.c_str());
+    printOrdersByPrice(sellByPrice, highestSharesSymbol);
+    printf("BUY:\n");
+    printOrdersByPrice(buyByPrice, highestSharesSymbol);
 }
 
+// helper function to check value of integer float fields
+bool isAllDigits(string& str) {
+    return !str.empty() && all_of(str.begin(), str.end(), ::isdigit);
+}
 
 
 int main(int argc, char **argv) {
@@ -106,11 +112,11 @@ int main(int argc, char **argv) {
         }
 
         if (message[0] == "QUIT") {
+            showHighestRemaining(buyOrders, sellOrders);
             return 0;
         } else if (message[0] == "SHOW") {
             if (message[1] == "HIGHEST") {
                 showHighestRemaining(buyOrders, sellOrders);
-                continue;
             } else if (message[1] == "BBO") {
                 auto &buyPrices = buyOrders.get<1>();
                 auto high = buyPrices.rbegin();
@@ -135,7 +141,6 @@ int main(int argc, char **argv) {
                 } else if (message[2] == "EXECS") {
                     printf("Total number of executions:\n%d\n", numExecutions);
                 }
-                continue;
             } else if (message[1] == "LEVEL") {
                 int n = stoi(message[3]);
 
@@ -143,30 +148,35 @@ int main(int argc, char **argv) {
                     auto &buyPrices = buyOrders.get<1>();
                     if (n > buyPrices.size()) {
                         printf("Only %d buy price levels remaining\n", buyPrices.size());
-                        continue;
+                    } else {
+                        auto buyPrice = buyPrices.rbegin();
+                        for (int i = 0; i < n - 1; i++) { buyPrice++; }
+                        
+                        printf("BUY level %d:\n%f\n", n, buyPrice->price);
                     }
-
-                    auto buyPrice = buyPrices.rbegin();
-                    for (int i = 0; i < n - 1; i++) { buyPrice++; }
-
-                    printf("BUY level %d:\n%f\n", n, buyPrice->price);
                 } else if (message[2] == "S") {
                     auto &sellPrices = sellOrders.get<1>();
                     if (n > sellPrices.size()) {
                         printf("Only %d sell price levels remaining\n", sellPrices.size());
-                        continue;
+                    } else {
+                        auto sellPrice = sellPrices.begin();
+                        for (int i = 0; i < n - 1; i++) { sellPrice++; }
+    
+                        printf("SELL level %d:\n%f\n", n, sellPrice->price);
                     }
 
-                    auto sellPrice = sellPrices.begin();
-                    for (int i = 0; i < n - 1; i++) { sellPrice++; }
-
-                    printf("SELL level %d:\n%f\n", n, sellPrice->price);
                 }
             }
         } else if (message[1] == "A") {
             // ignore message due to incorrect number of fields or incorrect field values
-            // TODO : FINISH FIELD VALUE CHECKS
-            if (message.size() != 7) {
+            if (message.size() != 7 
+            || !isAllDigits(message[0])         // Timestamp
+            || message[1].size() != 1           // Message Type
+            || message[2].size() > 10           // Order ID
+            || message[3].size() != 1           // Side
+            || !isAllDigits(message[4])         // Shares
+            || message[5].size() > 8            // Symbol
+            || !isAllDigits(message[6])) {      // Price
                 continue;
             }
 
@@ -190,7 +200,11 @@ int main(int argc, char **argv) {
         } else if(message[1] == "E") {
             // ignore message due to incorrect number of fields or incorrect field values
             // TODO : FINISH FIELD VALUE CHECKS
-            if (message.size() != 5) {
+            if (message.size() != 5 
+            || !isAllDigits(message[0])         // Timestamp
+            || message[1].size() != 1           // Message Type
+            || message[2].size() > 10           // Order ID
+            || !isAllDigits(message[3])) {      // Shares
                 continue;
             }
 
@@ -220,7 +234,11 @@ int main(int argc, char **argv) {
         } else if(message[1] == "C") {
             // ignore message due to incorrect number of fields or incorrect field values
             // TODO : FINISH FIELD VALUE CHECKS
-            if (message.size() != 4) {
+            if (message.size() != 4 
+            || !isAllDigits(message[0])         // Timestamp
+            || message[1].size() != 1           // Message Type
+            || message[2].size() > 10           // Order ID
+            || !isAllDigits(message[3])) {      // Shares
                 continue;
             }
 
